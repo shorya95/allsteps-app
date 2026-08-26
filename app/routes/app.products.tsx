@@ -1,5 +1,5 @@
 /**
- * Step 1 — Products sorted by units sold + revenue (Main Dashboard)
+ * Step 1 — Products sorted by units sold + revenue
  */
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { useLoaderData, useNavigate } from "@remix-run/react";
@@ -17,6 +17,7 @@ import {
   Box,
   Banner,
   EmptyState,
+  Spinner,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -52,14 +53,14 @@ function formatCurrency(amount: number, code: string) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: code }).format(amount);
 }
 
-export default function Index() {
+export default function ProductsPage() {
   const { products, analysisMap } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
 
   if (products.length === 0) {
     return (
       <Page>
-        <TitleBar title="Allsteps Super — CRO & AEO Optimizer" />
+        <TitleBar title="Allsteps — CRO & AEO Optimizer" />
         <EmptyState
           heading="No products found"
           image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
@@ -132,7 +133,7 @@ export default function Index() {
 
   return (
     <Page>
-      <TitleBar title="Allsteps Super — CRO & AEO Optimizer" />
+      <TitleBar title="Allsteps — CRO & AEO Optimizer" />
       <BlockStack gap="500">
         {/* Summary banner */}
         <Layout>
