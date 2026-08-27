@@ -19,7 +19,7 @@ import {
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { CheckIcon } from "@shopify/polaris-icons";
-import { authenticate, PLAN_STARTER, PLAN_GROWTH, PLAN_PRO } from "../shopify.server";
+import { authenticate, PLAN_BASIC, PLAN_PRO } from "../shopify.server";
 import prisma from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
