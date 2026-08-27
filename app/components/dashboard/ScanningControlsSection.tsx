@@ -1,4 +1,4 @@
-import { Card, BlockStack, Box, InlineStack, Text, Button, Badge, Spinner } from "@shopify/polaris";
+import { Card, BlockStack, Box, InlineStack, Text, Button, Badge } from "@shopify/polaris";
 import { RefreshIcon, MagicIcon } from "@shopify/polaris-icons";
 
 export interface ScanningControlsSectionProps {
@@ -8,6 +8,9 @@ export interface ScanningControlsSectionProps {
   scanProgress: number;
   scanStep: string;
   scanComplete: boolean;
+  canPerformScan: boolean;
+  planName?: string | null;
+  planId?: string | null;
   handleScanStore: () => void;
   navigate: (path: string) => void;
   totalProducts?: number;
@@ -23,6 +26,9 @@ export function ScanningControlsSection({
   scanProgress,
   scanStep,
   scanComplete,
+  canPerformScan,
+  planName,
+  planId,
   handleScanStore,
   navigate,
   totalProducts = 0,
@@ -45,34 +51,64 @@ export function ScanningControlsSection({
                 <Text as="h2" variant="headingLg">
                   {isScanning ? "Scanning your store…" : "Scan your Store"}
                 </Text>
-                <Badge tone="success">Growth Plan</Badge>
+                {canPerformScan ? (
+                  <Badge tone="success">{planName || "Active Plan"}</Badge>
+                ) : (
+                  <Badge tone="attention">No Plan</Badge>
+                )}
               </InlineStack>
               <Text as="p" variant="bodySm" tone="subdued">
-                {lastScanTime ? `Last scan completed: ${lastScanTime}` : "Run an AI-powered scan across your store layout, speed, and product performance"}
+                {canPerformScan
+                  ? lastScanTime
+                    ? `Last scan completed: ${lastScanTime}`
+                    : "Run an AI-powered scan across your store layout, speed, and product performance"
+                  : "A plan is required to scan your store and generate CRO/AEO optimizations"}
               </Text>
             </BlockStack>
 
             <InlineStack gap="200">
-              {!isScanning && (
+              {!canPerformScan && !isScanning && (
                 <Button
                   size="large"
-                  variant={scanComplete ? "secondary" : "primary"}
-                  icon={scanComplete ? RefreshIcon : undefined}
-                  onClick={handleScanStore}
+                  variant="primary"
+                  onClick={() => navigate("/app/plans")}
                 >
-                  {scanComplete ? "Rescan Store" : "Scan now"}
+                  Choose Plan
                 </Button>
               )}
+
+              {canPerformScan && !scanComplete && !isScanning && (
+                <Button
+                  size="large"
+                  variant="primary"
+                  onClick={handleScanStore}
+                >
+                  Scan now
+                </Button>
+              )}
+
               {isScanning && (
                 <Button size="large" variant="primary" loading>
                   Scanning...
                 </Button>
               )}
+
+              {canPerformScan && scanComplete && !isScanning && (
+                <Button
+                  size="large"
+                  variant="secondary"
+                  icon={RefreshIcon}
+                  onClick={handleScanStore}
+                >
+                  Rescan Store
+                </Button>
+              )}
+
               <Button
                 size="large"
                 variant={scanComplete ? "primary" : "secondary"}
                 icon={MagicIcon}
-                onClick={() => navigate("/app/products")}
+                onClick={() => canPerformScan ? navigate("/app/products") : navigate("/app/plans")}
               >
                 Optimize Products
               </Button>
@@ -148,7 +184,11 @@ export function ScanningControlsSection({
                 <BlockStack gap="050">
                   <Text variant="bodySm" tone="subdued" as="span">CRO & AEO Status</Text>
                   <InlineStack gap="100" blockAlign="center">
-                    <Badge tone="info">Ready to Optimize</Badge>
+                    {canPerformScan ? (
+                      <Badge tone="info">Ready to Optimize</Badge>
+                    ) : (
+                      <Badge tone="attention">Plan Required</Badge>
+                    )}
                   </InlineStack>
                 </BlockStack>
               </Box>

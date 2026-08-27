@@ -31,13 +31,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
   const analysedCount = analyses.filter((a) => a.status === "done").length;
 
-  // 3. Aggregate quick KPI totals
+  // 3. Fetch active subscription status (by default null / no plan)
+  const subscription = await prisma.subscription.findUnique({
+    where: { shop },
+  });
+  const canPerformScan = !!subscription && subscription.status === "ACTIVE";
+  const planId = subscription?.planId || null;
+  const planName = subscription?.planName || null;
+
+  // 4. Aggregate quick KPI totals
   const totalProducts = products.length;
   const totalUnitsSold = products.reduce((s, p) => s + p.unitsSold, 0);
   const totalRevenue = products.reduce((s, p) => s + p.revenue, 0);
   const currencyCode = products[0]?.currencyCode || "USD";
 
-  // 4. Try fetching initial screenshot in background or return shop domain
+  // 5. Try fetching initial screenshot in background or return shop domain
   let initialScreenshot: WebsiteScreenshot | null = null;
   try {
     const shotResult = await ScreenshotService.getWebsiteScreenshot(shop);
@@ -53,6 +61,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return json({
     shop,
+    canPerformScan,
+    planId,
+    planName,
     totalProducts,
     totalUnitsSold,
     totalRevenue,
@@ -76,6 +87,9 @@ const SCAN_STEPS = [
 export default function Dashboard() {
   const {
     shop,
+    canPerformScan,
+    planId,
+    planName,
     totalProducts,
     totalUnitsSold,
     totalRevenue,
@@ -96,6 +110,11 @@ export default function Dashboard() {
   const [isRedirecting, setIsRedirecting] = useState(false);
 
   const handleScanStore = () => {
+    if (!canPerformScan) {
+      navigate("/app/plans");
+      return;
+    }
+
     setIsScanning(true);
     setScanComplete(false);
     setScanProgress(8);
@@ -146,6 +165,9 @@ export default function Dashboard() {
           scanProgress={scanProgress}
           scanStep={scanStep}
           scanComplete={scanComplete}
+          canPerformScan={canPerformScan}
+          planId={planId}
+          planName={planName}
           handleScanStore={handleScanStore}
           navigate={navigate}
           totalProducts={totalProducts}

@@ -1,10 +1,9 @@
 /**
- * Plans & Pricing Page
+ * Plans & Pricing Page with Free Bypass Plan Support
  */
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
-import { useLoaderData, useNavigate } from "@remix-run/react";
-import { useState } from "react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
+import { useLoaderData, useNavigate, useFetcher } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -17,21 +16,64 @@ import {
   Badge,
   Banner,
   Divider,
-  List,
   Icon,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { CheckIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
+import prisma from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
 
+  const subscription = await prisma.subscription.findUnique({
+    where: { shop },
+  });
+
   return json({
     shop,
-    currentPlanId: "growth", // default active plan
+    currentPlanId: subscription?.status === "ACTIVE" ? subscription.planId : null,
+    currentPlanName: subscription?.status === "ACTIVE" ? subscription.planName : null,
   });
+};
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
+  const shop = session.shop;
+  const formData = await request.formData();
+
+  const intent = formData.get("intent") as string;
+  const planId = formData.get("planId") as string;
+  const planName = formData.get("planName") as string;
+
+  if (intent === "select_plan" && planId && planName) {
+    await prisma.subscription.upsert({
+      where: { shop },
+      create: {
+        shop,
+        planId,
+        planName,
+        status: "ACTIVE",
+      },
+      update: {
+        planId,
+        planName,
+        status: "ACTIVE",
+      },
+    });
+
+    return redirect("/app");
+  }
+
+  if (intent === "clear_plan") {
+    await prisma.subscription.deleteMany({
+      where: { shop },
+    });
+    return json({ success: true });
+  }
+
+  return json({ error: "Invalid intent" }, { status: 400 });
 };
 
 interface PlanTier {
@@ -41,12 +83,30 @@ interface PlanTier {
   period: string;
   description: string;
   popular?: boolean;
+  isFree?: boolean;
   features: string[];
   buttonText: string;
   buttonVariant: "primary" | "secondary" | "plain";
 }
 
 const PLANS: PlanTier[] = [
+  {
+    id: "free",
+    name: "Free Plan",
+    price: "$0",
+    period: "forever",
+    isFree: true,
+    description: "Free access to bypass and unlock all store audits, scans & CRO/AEO optimizations.",
+    features: [
+      "Instant Store Scan & Health Score",
+      "Full Product Sales Ranking",
+      "Gemini 2.0 Flash AI Analyses",
+      "1-Click Apply & Reversible Undo",
+      "No Credit Card Required (Bypass)",
+    ],
+    buttonText: "Choose Free Plan",
+    buttonVariant: "primary",
+  },
   {
     id: "starter",
     name: "Starter",
@@ -80,7 +140,7 @@ const PLANS: PlanTier[] = [
       "Store Screenshot & Speed Insights",
       "Priority Merchant Support",
     ],
-    buttonText: "Current Plan",
+    buttonText: "Choose Growth",
     buttonVariant: "primary",
   },
   {
@@ -97,15 +157,16 @@ const PLANS: PlanTier[] = [
       "A/B Testing Integration & Tracking",
       "Dedicated CRO Specialist Review",
     ],
-    buttonText: "Upgrade to Pro",
+    buttonText: "Choose Pro",
     buttonVariant: "secondary",
   },
 ];
 
 export default function PlansPage() {
-  const { currentPlanId } = useLoaderData<typeof loader>();
+  const { currentPlanId, currentPlanName } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
-  const [selectedPlan, setSelectedPlan] = useState<string>(currentPlanId);
+  const fetcher = useFetcher();
+  const isSubmitting = fetcher.state !== "idle";
 
   return (
     <Page
@@ -114,19 +175,27 @@ export default function PlansPage() {
     >
       <TitleBar title="Plans & Pricing" />
       <BlockStack gap="600">
-        {/* Banner */}
-        <Banner title="AllSteps AI Optimization Plans" tone="info">
-          <p>
-            Choose the plan that fits your catalog size and velocity. All plans include full Gemini AI analysis and reversible 1-click changes.
-          </p>
-        </Banner>
+        {/* Status Banner */}
+        {currentPlanId ? (
+          <Banner title={`Active Plan: ${currentPlanName || currentPlanId.toUpperCase()}`} tone="success">
+            <p>
+              Your store has an active plan. You can scan your store, analyze top-selling products, and apply optimizations.
+            </p>
+          </Banner>
+        ) : (
+          <Banner title="Choose a plan to get started" tone="warning">
+            <p>
+              No plan is currently selected. Choose our <strong>Free Plan</strong> to bypass and get started immediately, or pick a plan below.
+            </p>
+          </Banner>
+        )}
 
         {/* Pricing Cards Grid */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: "20px",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gap: "16px",
           }}
         >
           {PLANS.map((plan) => {
@@ -137,8 +206,9 @@ export default function PlansPage() {
                   {/* Header */}
                   <InlineStack align="space-between" blockAlign="center">
                     <Text variant="headingLg" as="h3">{plan.name}</Text>
-                    {plan.popular && <Badge tone="success">Most Popular</Badge>}
-                    {isCurrent && !plan.popular && <Badge tone="info">Active</Badge>}
+                    {plan.popular && <Badge tone="success">Popular</Badge>}
+                    {plan.isFree && <Badge tone="info">Free Bypass</Badge>}
+                    {isCurrent && <Badge tone="success">Active</Badge>}
                   </InlineStack>
 
                   {/* Price */}
@@ -168,20 +238,40 @@ export default function PlansPage() {
                   </BlockStack>
 
                   <Box paddingBlockStart="200">
-                    <Button
-                      fullWidth
-                      variant={isCurrent ? "primary" : plan.buttonVariant}
-                      disabled={isCurrent}
-                      onClick={() => setSelectedPlan(plan.id)}
-                    >
-                      {isCurrent ? "Current Plan (Active)" : plan.buttonText}
-                    </Button>
+                    <fetcher.Form method="post">
+                      <input type="hidden" name="intent" value="select_plan" />
+                      <input type="hidden" name="planId" value={plan.id} />
+                      <input type="hidden" name="planName" value={plan.name} />
+                      <Button
+                        fullWidth
+                        variant={isCurrent ? "secondary" : plan.buttonVariant}
+                        disabled={isCurrent || isSubmitting}
+                        submit
+                        loading={isSubmitting && fetcher.formData?.get("planId") === plan.id}
+                      >
+                        {isCurrent ? "Current Plan (Active)" : plan.buttonText}
+                      </Button>
+                    </fetcher.Form>
                   </Box>
                 </BlockStack>
               </Card>
             );
           })}
         </div>
+
+        {/* Reset Plan button for testing */}
+        {currentPlanId && (
+          <Box paddingBlockStart="200">
+            <InlineStack align="end">
+              <fetcher.Form method="post">
+                <input type="hidden" name="intent" value="clear_plan" />
+                <Button variant="plain" tone="critical" submit loading={isSubmitting}>
+                  Reset / Clear Active Plan (Test Mode)
+                </Button>
+              </fetcher.Form>
+            </InlineStack>
+          </Box>
+        )}
 
         {/* FAQ Section */}
         <Layout>
@@ -193,28 +283,19 @@ export default function PlansPage() {
                 <BlockStack gap="300">
                   <BlockStack gap="100">
                     <Text variant="bodyMd" fontWeight="semibold" as="p">
+                      What does the Free Plan include?
+                    </Text>
+                    <Text variant="bodySm" tone="subdued" as="p">
+                      The Free Plan allows you to immediately bypass any gating, scan your store, analyze products using Gemini AI, and apply 1-click optimizations.
+                    </Text>
+                  </BlockStack>
+
+                  <BlockStack gap="100">
+                    <Text variant="bodyMd" fontWeight="semibold" as="p">
                       Can I undo changes made by the AI optimizer?
                     </Text>
                     <Text variant="bodySm" tone="subdued" as="p">
                       Yes! Every recommendation applied to your store is logged in our database with the exact &quot;before&quot; state. You can click Undo at any time to restore your original content.
-                    </Text>
-                  </BlockStack>
-
-                  <BlockStack gap="100">
-                    <Text variant="bodyMd" fontWeight="semibold" as="p">
-                      How does AllSteps calculate product sales ranking?
-                    </Text>
-                    <Text variant="bodySm" tone="subdued" as="p">
-                      We query your Shopify store&apos;s paid order line items via the GraphQL Admin API, calculating total units sold and gross revenue per product so you focus on top performers first.
-                    </Text>
-                  </BlockStack>
-
-                  <BlockStack gap="100">
-                    <Text variant="bodyMd" fontWeight="semibold" as="p">
-                      How do I switch or cancel plans?
-                    </Text>
-                    <Text variant="bodySm" tone="subdued" as="p">
-                      You can upgrade, downgrade, or cancel at any time directly through the Shopify App subscription portal without any lock-in contracts.
                     </Text>
                   </BlockStack>
                 </BlockStack>
