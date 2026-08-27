@@ -1,7 +1,8 @@
 /**
- * Step 1 — Products sorted by units sold + revenue
+ * Step 1 — Products sorted by units sold + revenue (Product CRO & AEO Optimizer)
  */
 import type { LoaderFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
 import { useLoaderData, useNavigate } from "@remix-run/react";
 import {
   Page,
@@ -17,7 +18,6 @@ import {
   Box,
   Banner,
   EmptyState,
-  Spinner,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -39,7 +39,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     analyses.map((a) => [a.productId, { status: a.status, score: a.scoreOverall }]),
   );
 
-  return { products, analysisMap };
+  return json({ products, analysisMap });
 };
 
 function scoreBadge(score: number) {
@@ -59,8 +59,11 @@ export default function ProductsPage() {
 
   if (products.length === 0) {
     return (
-      <Page>
-        <TitleBar title="Allsteps — CRO & AEO Optimizer" />
+      <Page
+        backAction={{ content: "Dashboard", url: "/app" }}
+        title="Products — CRO & AEO Optimizer"
+      >
+        <TitleBar title="Products — CRO & AEO Optimizer" />
         <EmptyState
           heading="No products found"
           image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
@@ -132,8 +135,11 @@ export default function ProductsPage() {
   const currency = products[0]?.currencyCode ?? "USD";
 
   return (
-    <Page>
-      <TitleBar title="Allsteps — CRO & AEO Optimizer" />
+    <Page
+      backAction={{ content: "Dashboard", url: "/app" }}
+      title="AllSteps Super — CRO & AEO Optimizer"
+    >
+      <TitleBar title="AllSteps Super — CRO & AEO Optimizer" />
       <BlockStack gap="500">
         {/* Summary banner */}
         <Layout>

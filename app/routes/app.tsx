@@ -7,7 +7,12 @@ import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 
 import { authenticate } from "../shopify.server";
 
-export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
+import dashboardStyles from "../styles/dashboard-animations.css?url";
+
+export const links = () => [
+  { rel: "stylesheet", href: polarisStyles },
+  { rel: "stylesheet", href: dashboardStyles },
+];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
@@ -22,8 +27,10 @@ export default function App() {
     <AppProvider isEmbeddedApp apiKey={apiKey}>
       <NavMenu>
         <Link to="/app" rel="home">
-          Products
+          Dashboard
         </Link>
+        <Link to="/app/products">Products</Link>
+        <Link to="/app/plans">Plans & Pricing</Link>
       </NavMenu>
       <Outlet />
     </AppProvider>

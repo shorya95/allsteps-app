@@ -1,0 +1,37 @@
+/* Dashboard Animations & Progress Styles */
+@keyframes progressPulse {
+  0% { transform: scaleY(1); }
+  50% { transform: scaleY(1.08); }
+  100% { transform: scaleY(1); }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes fadeInOut {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.progress-bar-pulse {
+  animation: progressPulse 1.5s ease-in-out infinite;
+}
+
+.shimmer-effect {
+  animation: shimmer 2s infinite;
+}
+
+.scanning-indicator {
+  animation: fadeInOut 1.5s infinite;
+}
+
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
