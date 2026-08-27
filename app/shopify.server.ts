@@ -3,9 +3,16 @@ import {
   ApiVersion,
   AppDistribution,
   shopifyApp,
+  BillingInterval,
 } from "@shopify/shopify-app-remix/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
+
+export const PLAN_STARTER = "Starter";
+export const PLAN_GROWTH = "Growth";
+export const PLAN_PRO = "Pro & Scale";
+
+const isTestBilling = process.env.SHOPIFY_USE_TEST_CHARGES === "true" || process.env.NODE_ENV !== "production";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -19,6 +26,35 @@ const shopify = shopifyApp({
   future: {
     unstable_newEmbeddedAuthStrategy: true,
     expiringOfflineAccessTokens: true,
+  },
+  billing: {
+    [PLAN_STARTER]: {
+      lineItems: [
+        {
+          amount: 19.00,
+          currencyCode: "USD",
+          interval: BillingInterval.Every30Days,
+        },
+      ],
+    },
+    [PLAN_GROWTH]: {
+      lineItems: [
+        {
+          amount: 49.00,
+          currencyCode: "USD",
+          interval: BillingInterval.Every30Days,
+        },
+      ],
+    },
+    [PLAN_PRO]: {
+      lineItems: [
+        {
+          amount: 99.00,
+          currencyCode: "USD",
+          interval: BillingInterval.Every30Days,
+        },
+      ],
+    },
   },
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }

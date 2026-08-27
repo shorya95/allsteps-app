@@ -1,9 +1,10 @@
 /**
- * Plans & Pricing Page with Free Bypass Plan Support
+ * Plans & Pricing Page with Live Shopify Billing API + Free Plan Bypass
  */
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { useLoaderData, useNavigate, useFetcher } from "@remix-run/react";
+import { useState } from "react";
 import {
   Page,
   Layout,
@@ -17,29 +18,75 @@ import {
   Banner,
   Divider,
   Icon,
+  Modal,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { CheckIcon } from "@shopify/polaris-icons";
-import { authenticate } from "../shopify.server";
+import { CheckIcon, AlertTriangleIcon } from "@shopify/polaris-icons";
+import {
+  authenticate,
+  PLAN_STARTER,
+  PLAN_GROWTH,
+  PLAN_PRO,
+} from "../shopify.server";
 import prisma from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, billing, admin } = await authenticate.admin(request);
   const shop = session.shop;
 
-  const subscription = await prisma.subscription.findUnique({
+  let subscription = await prisma.subscription.findUnique({
     where: { shop },
   });
+
+  // Verify live Shopify billing status
+  let shopifyActiveSub: any = null;
+  try {
+    const { hasActivePayment, appSubscriptions } = await billing.check();
+    if (hasActivePayment && appSubscriptions && appSubscriptions.length > 0) {
+      shopifyActiveSub = appSubscriptions[0];
+
+      // Sync with database if needed
+      if (!subscription || subscription.status !== "ACTIVE") {
+        let planId = "growth";
+        if (shopifyActiveSub.name.includes("Starter")) planId = "starter";
+        else if (shopifyActiveSub.name.includes("Pro")) planId = "pro";
+
+        subscription = await prisma.subscription.upsert({
+          where: { shop },
+          create: {
+            shop,
+            planId,
+            planName: shopifyActiveSub.name,
+            status: "ACTIVE",
+            shopifyChargeId: String(shopifyActiveSub.id),
+            shopifyPlan: shopifyActiveSub.name,
+          },
+          update: {
+            planId,
+            planName: shopifyActiveSub.name,
+            status: "ACTIVE",
+            shopifyChargeId: String(shopifyActiveSub.id),
+            shopifyPlan: shopifyActiveSub.name,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("Could not check Shopify billing:", err);
+  }
 
   return json({
     shop,
     currentPlanId: subscription?.status === "ACTIVE" ? subscription.planId : null,
     currentPlanName: subscription?.status === "ACTIVE" ? subscription.planName : null,
+    shopifyChargeId: subscription?.shopifyChargeId || shopifyActiveSub?.id || null,
+    currentPeriodEnd: subscription?.currentPeriodEnd || null,
+    status: subscription?.status || "NO_PLAN",
   });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, billing } = await authenticate.admin(request);
   const shop = session.shop;
   const formData = await request.formData();
 
@@ -47,18 +94,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const planId = formData.get("planId") as string;
   const planName = formData.get("planName") as string;
 
-  if (intent === "select_plan" && planId && planName) {
+  // 1. Free Plan Selection (Bypass Shopify Billing)
+  if (intent === "select_plan" && planId === "free") {
     await prisma.subscription.upsert({
       where: { shop },
       create: {
         shop,
-        planId,
-        planName,
+        planId: "free",
+        planName: "Free Plan (Bypass)",
         status: "ACTIVE",
       },
       update: {
-        planId,
-        planName,
+        planId: "free",
+        planName: "Free Plan (Bypass)",
         status: "ACTIVE",
       },
     });
@@ -66,11 +114,52 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return redirect("/app");
   }
 
-  if (intent === "clear_plan") {
-    await prisma.subscription.deleteMany({
-      where: { shop },
+  // 2. Paid Plan Selection (Redirect to Shopify Billing Approval Screen)
+  if (intent === "select_plan" && (planId === "starter" || planId === "growth" || planId === "pro")) {
+    let shopifyPlanName = PLAN_GROWTH;
+    if (planId === "starter") shopifyPlanName = PLAN_STARTER;
+    if (planId === "pro") shopifyPlanName = PLAN_PRO;
+
+    const requestUrl = new URL(request.url);
+    const returnUrl = `${requestUrl.origin}/app/billing/success?plan=${planId}`;
+
+    const isTestBilling = process.env.SHOPIFY_USE_TEST_CHARGES === "true" || process.env.NODE_ENV !== "production";
+
+    console.log("🚀 Redirecting to Shopify Billing Request:", {
+      shopifyPlanName,
+      isTestBilling,
+      returnUrl,
     });
-    return json({ success: true });
+
+    return await billing.request({
+      plan: shopifyPlanName as any,
+      isTest: isTestBilling,
+      returnUrl,
+    });
+  }
+
+  // 3. Cancel Subscription
+  if (intent === "cancel_plan") {
+    try {
+      const { hasActivePayment, appSubscriptions } = await billing.check();
+      if (hasActivePayment && appSubscriptions && appSubscriptions.length > 0) {
+        const activeSub = appSubscriptions[0];
+        await billing.cancel({
+          subscriptionId: activeSub.id,
+          isTest: process.env.NODE_ENV !== "production",
+          prorate: true,
+        });
+      }
+    } catch (err) {
+      console.warn("Could not cancel on Shopify API:", err);
+    }
+
+    await prisma.subscription.updateMany({
+      where: { shop },
+      data: { status: "CANCELLED" },
+    });
+
+    return redirect("/app/plans");
   }
 
   return json({ error: "Invalid intent" }, { status: 400 });
@@ -121,7 +210,7 @@ const PLANS: PlanTier[] = [
       "1-Click Apply & Revert",
       "Standard Email Support",
     ],
-    buttonText: "Choose Starter",
+    buttonText: "Upgrade to Starter",
     buttonVariant: "secondary",
   },
   {
@@ -140,7 +229,7 @@ const PLANS: PlanTier[] = [
       "Store Screenshot & Speed Insights",
       "Priority Merchant Support",
     ],
-    buttonText: "Choose Growth",
+    buttonText: "Upgrade to Growth",
     buttonVariant: "primary",
   },
   {
@@ -157,16 +246,27 @@ const PLANS: PlanTier[] = [
       "A/B Testing Integration & Tracking",
       "Dedicated CRO Specialist Review",
     ],
-    buttonText: "Choose Pro",
+    buttonText: "Upgrade to Pro",
     buttonVariant: "secondary",
   },
 ];
 
 export default function PlansPage() {
-  const { currentPlanId, currentPlanName } = useLoaderData<typeof loader>();
+  const { currentPlanId, currentPlanName, shopifyChargeId, currentPeriodEnd, status } =
+    useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const fetcher = useFetcher();
   const isSubmitting = fetcher.state !== "idle";
+
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+
+  const formattedPeriodEnd = currentPeriodEnd
+    ? new Date(currentPeriodEnd).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
 
   return (
     <Page
@@ -175,17 +275,36 @@ export default function PlansPage() {
     >
       <TitleBar title="Plans & Pricing" />
       <BlockStack gap="600">
-        {/* Status Banner */}
-        {currentPlanId ? (
-          <Banner title={`Active Plan: ${currentPlanName || currentPlanId.toUpperCase()}`} tone="success">
-            <p>
-              Your store has an active plan. You can scan your store, analyze top-selling products, and apply optimizations.
-            </p>
-          </Banner>
+        {/* Active Plan Management Card */}
+        {currentPlanId && status === "ACTIVE" ? (
+          <Card>
+            <BlockStack gap="300">
+              <InlineStack align="space-between" blockAlign="center">
+                <BlockStack gap="100">
+                  <InlineStack gap="200" blockAlign="center">
+                    <Text variant="headingMd" as="h2">Current Subscription</Text>
+                    <Badge tone="success">Active</Badge>
+                  </InlineStack>
+                  <Text variant="bodySm" tone="subdued" as="p">
+                    {`You are currently subscribed to the ${currentPlanName || currentPlanId.toUpperCase()}`}
+                    {formattedPeriodEnd ? ` · Renews on ${formattedPeriodEnd}` : ""}
+                  </Text>
+                </BlockStack>
+
+                <Button
+                  variant="plain"
+                  tone="critical"
+                  onClick={() => setCancelModalOpen(true)}
+                >
+                  Cancel Subscription
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </Card>
         ) : (
           <Banner title="Choose a plan to get started" tone="warning">
             <p>
-              No plan is currently selected. Choose our <strong>Free Plan</strong> to bypass and get started immediately, or pick a plan below.
+              No active subscription found. Select the <strong>Free Plan</strong> to bypass and test for free, or choose a plan below to activate real Shopify billing.
             </p>
           </Banner>
         )}
@@ -199,7 +318,7 @@ export default function PlansPage() {
           }}
         >
           {PLANS.map((plan) => {
-            const isCurrent = plan.id === currentPlanId;
+            const isCurrent = plan.id === currentPlanId && status === "ACTIVE";
             return (
               <Card key={plan.id}>
                 <BlockStack gap="400">
@@ -249,7 +368,7 @@ export default function PlansPage() {
                         submit
                         loading={isSubmitting && fetcher.formData?.get("planId") === plan.id}
                       >
-                        {isCurrent ? "Current Plan (Active)" : plan.buttonText}
+                        {isCurrent ? "Active Plan" : plan.buttonText}
                       </Button>
                     </fetcher.Form>
                   </Box>
@@ -259,19 +378,39 @@ export default function PlansPage() {
           })}
         </div>
 
-        {/* Reset Plan button for testing */}
-        {currentPlanId && (
-          <Box paddingBlockStart="200">
-            <InlineStack align="end">
-              <fetcher.Form method="post">
-                <input type="hidden" name="intent" value="clear_plan" />
-                <Button variant="plain" tone="critical" submit loading={isSubmitting}>
-                  Reset / Clear Active Plan (Test Mode)
-                </Button>
-              </fetcher.Form>
-            </InlineStack>
-          </Box>
-        )}
+        {/* Cancellation Confirmation Modal */}
+        <Modal
+          open={cancelModalOpen}
+          onClose={() => setCancelModalOpen(false)}
+          title="Cancel Subscription?"
+          primaryAction={{
+            content: "Yes, Cancel Subscription",
+            destructive: true,
+            onAction: () => {
+              const form = new FormData();
+              form.append("intent", "cancel_plan");
+              fetcher.submit(form, { method: "post" });
+              setCancelModalOpen(false);
+            },
+          }}
+          secondaryActions={[
+            {
+              content: "Keep Subscription",
+              onAction: () => setCancelModalOpen(false),
+            },
+          ]}
+        >
+          <Modal.Section>
+            <BlockStack gap="300">
+              <Text as="p">
+                Are you sure you want to cancel your subscription? You will lose access to automated catalog scans and new AI product optimizations.
+              </Text>
+              <Text as="p" tone="subdued">
+                You can reactivate or choose another plan at any time.
+              </Text>
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
 
         {/* FAQ Section */}
         <Layout>
@@ -283,19 +422,28 @@ export default function PlansPage() {
                 <BlockStack gap="300">
                   <BlockStack gap="100">
                     <Text variant="bodyMd" fontWeight="semibold" as="p">
-                      What does the Free Plan include?
+                      How does Shopify Billing work?
                     </Text>
                     <Text variant="bodySm" tone="subdued" as="p">
-                      The Free Plan allows you to immediately bypass any gating, scan your store, analyze products using Gemini AI, and apply 1-click optimizations.
+                      Paid plans are charged directly via Shopify&apos;s native 30-day recurring app subscription. All charges appear on your regular Shopify invoice.
                     </Text>
                   </BlockStack>
 
                   <BlockStack gap="100">
                     <Text variant="bodyMd" fontWeight="semibold" as="p">
-                      Can I undo changes made by the AI optimizer?
+                      What is the Free Plan?
                     </Text>
                     <Text variant="bodySm" tone="subdued" as="p">
-                      Yes! Every recommendation applied to your store is logged in our database with the exact &quot;before&quot; state. You can click Undo at any time to restore your original content.
+                      The Free Plan allows you to immediately bypass any gating, scan your store, analyze products using Gemini AI, and apply 1-click optimizations without entering credit card details.
+                    </Text>
+                  </BlockStack>
+
+                  <BlockStack gap="100">
+                    <Text variant="bodyMd" fontWeight="semibold" as="p">
+                      Can I cancel anytime?
+                    </Text>
+                    <Text variant="bodySm" tone="subdued" as="p">
+                      Yes! You can cancel your subscription at any time with one click from this page or through the Shopify App Store settings.
                     </Text>
                   </BlockStack>
                 </BlockStack>

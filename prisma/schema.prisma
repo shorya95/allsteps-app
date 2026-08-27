@@ -60,13 +60,17 @@ model ChangeHistory {
 }
 
 model Subscription {
-  id        String   @id @default(cuid())
-  shop      String   @unique
-  planId    String
-  planName  String
-  status    String   @default("ACTIVE")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String    @id @default(cuid())
+  shop             String    @unique
+  planId           String
+  planName         String
+  status           String    @default("ACTIVE")
+  shopifyChargeId  String?
+  shopifyPlan      String?
+  amount           Float?
+  currentPeriodEnd DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }
 
 
