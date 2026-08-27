@@ -7,19 +7,9 @@ import { json } from "@remix-run/node";
 import { useLoaderData, useNavigate } from "@remix-run/react";
 import {
   Page,
-  Layout,
-  Card,
   BlockStack,
-  InlineStack,
-  Text,
-  Button,
-  Box,
-  Banner,
-  List,
-  Icon,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { CheckIcon, ArrowRightIcon, MagicIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { fetchProductsWithSales } from "../lib/shopify.products";
 import { ComplexDevicePreview, type WebsiteScreenshot } from "../components/dashboard/ComplexDevicePreview";
@@ -163,78 +153,6 @@ export default function Dashboard() {
           totalRevenue={totalRevenue}
           currencyCode={currencyCode}
         />
-
-        {/* Quick Highlights & Action Cards */}
-        <Layout>
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="300">
-                <Text variant="headingMd" as="h3">
-                  🚀 4-Step Product CRO & AEO Flow
-                </Text>
-                <Text as="p" variant="bodyMd" tone="subdued">
-                  AllSteps identifies your top-selling products, performs multi-point AI audits with Google Gemini, and lets you apply high-converting copy and meta tags with 1 click.
-                </Text>
-
-                <List type="bullet">
-                  <List.Item>
-                    <strong>Step 1: Product Sales Ranking</strong> — Focus on the pages generating your store&apos;s revenue.
-                  </List.Item>
-                  <List.Item>
-                    <strong>Step 2: Gemini AI Analysis</strong> — Deep review of titles, persuasive descriptions, tags, and AEO schema readiness.
-                  </List.Item>
-                  <List.Item>
-                    <strong>Step 3: Actionable Recommendations</strong> — Visual scorecards, quick-win highlights, and before/after previews.
-                  </List.Item>
-                  <List.Item>
-                    <strong>Step 4: 1-Click Implementation</strong> — Push updates directly to Shopify with instant reversal/undo.
-                  </List.Item>
-                </List>
-
-                <InlineStack gap="300" align="start">
-                  <Button
-                    variant="primary"
-                    icon={MagicIcon}
-                    onClick={() => navigate("/app/products")}
-                  >
-                    Launch Product Optimizer
-                  </Button>
-                  <Button onClick={() => navigate("/app/plans")}>
-                    View Plans & Pricing
-                  </Button>
-                </InlineStack>
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-
-          <Layout.Section variant="oneThird">
-            <Card>
-              <BlockStack gap="300">
-                <Text variant="headingMd" as="h3">
-                  💡 Optimization Tips
-                </Text>
-                <BlockStack gap="200">
-                  <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-                    <Text variant="bodySm" fontWeight="semibold" as="p">
-                      Target High-Velocity Items
-                    </Text>
-                    <Text variant="bodySm" tone="subdued" as="p">
-                      A 2% conversion lift on your top 3 products yields 80% of revenue gains.
-                    </Text>
-                  </Box>
-                  <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-                    <Text variant="bodySm" fontWeight="semibold" as="p">
-                      AEO & Search Readiness
-                    </Text>
-                    <Text variant="bodySm" tone="subdued" as="p">
-                      Structured QA and benefit-driven meta tags help AI search engines cite your product pages.
-                    </Text>
-                  </Box>
-                </BlockStack>
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        </Layout>
       </BlockStack>
     </Page>
   );
